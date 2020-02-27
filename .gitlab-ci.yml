@@ -1,0 +1,38 @@
+stages:
+  - build
+  - deploy
+
+build:
+  stage: build
+  only:
+    - master
+  image: docker:latest
+  services:
+    - docker:dind
+  before_script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+  script:
+    - docker build --pull -t registry.gitlab.com/husocial/backend .
+    - docker push registry.gitlab.com/husocial/backend
+
+deploy:
+  stage: deploy
+  image: bash:latest
+  before_script:
+    - apk add openssh-client
+    - eval $(ssh-agent)
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add - > /dev/null
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+  script:
+    - |
+      ssh -o StrictHostKeyChecking=no root@harrisburgu.life "
+        set -e
+        cd ~/husocial/
+
+        docker login -u '$CI_REGISTRY_USER' -p '$CI_REGISTRY_PASSWORD' $CI_REGISTRY
+        docker-compose build --pull backend
+        docker-compose up -d backend
+      "
+  dependencies:
+    - build
